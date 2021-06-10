@@ -3,6 +3,7 @@ package de.fred4jupiter.fredbet.service;
 import de.fred4jupiter.fredbet.data.RandomValueGenerator;
 import de.fred4jupiter.fredbet.domain.*;
 import de.fred4jupiter.fredbet.props.FredbetConstants;
+import de.fred4jupiter.fredbet.props.FredbetProperties;
 import de.fred4jupiter.fredbet.repository.BetRepository;
 import de.fred4jupiter.fredbet.repository.ExtraBetRepository;
 import de.fred4jupiter.fredbet.repository.MatchRepository;
@@ -10,6 +11,7 @@ import de.fred4jupiter.fredbet.security.SecurityService;
 import de.fred4jupiter.fredbet.util.Validator;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutableTriple;
+import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort.Direction;
 import org.springframework.stereotype.Service;
@@ -37,14 +39,21 @@ public class BettingService {
 
     private final RandomValueGenerator randomValueGenerator;
 
+    private final MatchService matchService;
+
+    private final FredbetProperties fredbetProperties;
+
     public BettingService(MatchRepository matchRepository, BetRepository betRepository, ExtraBetRepository extraBetRepository,
-                          SecurityService securityService, JokerService jokerService, RandomValueGenerator randomValueGenerator) {
+                          SecurityService securityService, JokerService jokerService, RandomValueGenerator randomValueGenerator,
+                          MatchService matchService, FredbetProperties fredbetProperties) {
         this.matchRepository = matchRepository;
         this.betRepository = betRepository;
         this.extraBetRepository = extraBetRepository;
         this.securityService = securityService;
         this.jokerService = jokerService;
         this.randomValueGenerator = randomValueGenerator;
+        this.matchService = matchService;
+        this.fredbetProperties = fredbetProperties;
     }
 
     public Bet createAndSaveBetting(String username, Match match, Integer goalsTeamOne, Integer goalsTeamTwo, boolean withJoker) {
@@ -149,6 +158,7 @@ public class BettingService {
         ExtraBet extraBet = extraBetRepository.findByUserName(username);
         if (extraBet == null) {
             extraBet = new ExtraBet();
+            extraBet.setUserName(username);
         }
 
         return extraBet;
@@ -198,15 +208,32 @@ public class BettingService {
     public void diceAllMatchesForUser(String username) {
         List<Match> allMatches = findMatchesToBet(username);
         allMatches.forEach(match -> {
-            Integer goalsTeamOne = randomValueGenerator.generateRandomValue();
-            Integer goalsTeamTwo = randomValueGenerator.generateRandomValue();
             boolean jokerAllowed = false;
             if (randomValueGenerator.generateRandomBoolean()) {
                 jokerAllowed = jokerService.isSettingJokerAllowed(username, match.getId());
             }
-            createAndSaveBetting(username, match, goalsTeamOne, goalsTeamTwo, jokerAllowed);
+            Pair<Integer, Integer> goals = Pair.of(randomFromTo(), randomFromTo());
+            createAndSaveBetting(username, match, goals.getLeft(), goals.getRight(), jokerAllowed);
         });
-        createExtraBetForUser(username);
+
+        ExtraBet extraBet = loadExtraBetForUser(username);
+        if (extraBet.noExtraBetsSet()) {
+            ImmutableTriple<Country, Country, Country> teamTriple = randomValueGenerator.generateTeamTriple();
+            if (!extraBet.isFinalWinnerSet()) {
+                extraBet.setFinalWinner(teamTriple.getLeft());
+            }
+            if (!extraBet.isSemiFinalWinnerSet()) {
+                extraBet.setSemiFinalWinner(teamTriple.getMiddle());
+            }
+            if (matchService.isGameForThirdAvailable() && (!extraBet.isThirdFinalWinnerSet())) {
+                extraBet.setThirdFinalWinner(teamTriple.getRight());
+            }
+            extraBetRepository.save(extraBet);
+        }
+    }
+
+    private Integer randomFromTo() {
+        return randomValueGenerator.generateRandomValueInRange(fredbetProperties.getDiceMinRange(), fredbetProperties.getDiceMaxRange());
     }
 
     public void createExtraBetForUser(String username) {
