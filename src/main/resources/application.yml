@@ -51,7 +51,7 @@ fredbet:
   image-location: database
   # set folder where you want to store images to (defaults to user home dir)
   image-file-system-base-folder: ${user.home}/fredbet
-  default-language: de
+  default-language: en
   create-demo-data: false
 
 # -------- user groups and permissions ------------------------------------------------------------------------------
