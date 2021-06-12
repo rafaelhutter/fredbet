@@ -1,6 +1,5 @@
 package de.fred4jupiter.fredbet.service.registration;
 
-import de.fred4jupiter.fredbet.domain.AppUser;
 import de.fred4jupiter.fredbet.domain.AppUserBuilder;
 import de.fred4jupiter.fredbet.security.FredBetUserGroup;
 import de.fred4jupiter.fredbet.service.config.RuntimeSettingsService;
@@ -25,23 +24,28 @@ public class RegistrationService {
     }
 
     public boolean isTokenValid(String token) {
+        if (StringUtils.isBlank(token)) {
+            return false;
+        }
         final String registrationCode = runtimeSettingsService.loadRuntimeSettings().getRegistrationCode();
         if (StringUtils.isBlank(registrationCode)) {
             LOG.warn("No registration code set!");
             return false;
         }
 
-        return registrationCode.equals(token);
+        return registrationCode.trim().equals(token.trim());
     }
 
     public boolean isSelfRegistrationEnabled() {
         return runtimeSettingsService.loadRuntimeSettings().isSelfRegistrationEnabled();
     }
 
-    public void registerNewUser(String username, String newPassword) {
-        AppUser appUser = AppUserBuilder.create()
+    public void registerNewUser(String username, String newPassword, boolean child) {
+        AppUserBuilder builder = AppUserBuilder.create()
                 .withUsernameAndPassword(username, newPassword)
-                .withUserGroup(FredBetUserGroup.ROLE_USER).build();
-        userService.createUser(appUser);
+                .withUserGroup(FredBetUserGroup.ROLE_USER)
+                .withIsChild(child);
+
+        userService.createUser(builder.build());
     }
 }
